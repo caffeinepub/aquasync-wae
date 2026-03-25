@@ -10,6 +10,7 @@ interface DispenseCircleProps {
   hotRelockCountdown: number;
   isDispensing: boolean;
   dispenseProgress: number;
+  liveTemp?: number;
   onSetMode: (m: Mode) => void;
   onSetVolume: (v: Volume) => void;
   onStartHotUnlock: () => void;
@@ -59,9 +60,10 @@ export function DispenseCircle({
   volume,
   isHotLocked,
   hotUnlockProgress,
-  hotRelockCountdown,
+  hotRelockCountdown: _hotRelockCountdown,
   isDispensing,
   dispenseProgress,
+  liveTemp,
   onSetMode,
   onSetVolume,
   onStartHotUnlock,
@@ -97,6 +99,9 @@ export function DispenseCircle({
       onCancelHotUnlock();
     }
   };
+
+  const tempDisplay =
+    liveTemp !== undefined ? `${liveTemp.toFixed(1)}°C` : null;
 
   return (
     <div className="flex flex-col items-center gap-6">
@@ -219,25 +224,6 @@ export function DispenseCircle({
                   hot water
                 </span>
               </motion.div>
-            ) : mode === "HOT" && !isHotLocked ? (
-              <motion.div
-                key="unlocked"
-                className="flex flex-col items-center gap-1"
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-              >
-                <span className="text-3xl">🔓</span>
-                <span
-                  className="text-xl font-bold"
-                  style={{ color: "#FB7185" }}
-                >
-                  {hotRelockCountdown}s
-                </span>
-                <span className="text-[10px]" style={{ color: "#A7B2C6" }}>
-                  tap to dispense
-                </span>
-              </motion.div>
             ) : isDispensing ? (
               <motion.div
                 key="dispensing"
@@ -247,7 +233,7 @@ export function DispenseCircle({
                 exit={{ opacity: 0 }}
               >
                 <motion.span
-                  className="text-4xl"
+                  className="text-3xl"
                   animate={{ y: [0, -6, 0] }}
                   transition={{
                     repeat: Number.POSITIVE_INFINITY,
@@ -255,7 +241,7 @@ export function DispenseCircle({
                     ease: "easeInOut",
                   }}
                 >
-                  💧
+                  {mode === "HOT" ? "🔥" : "💧"}
                 </motion.span>
                 <span
                   className="text-sm font-semibold"
@@ -263,8 +249,63 @@ export function DispenseCircle({
                 >
                   DISPENSING
                 </span>
-                <span className="text-xs" style={{ color: "#A7B2C6" }}>
-                  {Math.round(dispenseProgress)}%
+                {/* Live temperature display */}
+                {tempDisplay && (
+                  <motion.div
+                    className="flex flex-col items-center gap-0.5 mt-0.5"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <motion.span
+                      key={tempDisplay}
+                      initial={{ opacity: 0.5, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-xl font-bold leading-none"
+                      style={{
+                        color: modeColor,
+                        textShadow: `0 0 12px ${modeColor}80`,
+                      }}
+                    >
+                      {tempDisplay}
+                    </motion.span>
+                    <div className="flex items-center gap-1">
+                      <motion.span
+                        className="w-1.5 h-1.5 rounded-full block"
+                        style={{ background: modeColor }}
+                        animate={{ opacity: [1, 0.3, 1], scale: [1, 1.4, 1] }}
+                        transition={{
+                          repeat: Number.POSITIVE_INFINITY,
+                          duration: 1,
+                        }}
+                      />
+                      <span
+                        className="text-[9px] font-semibold"
+                        style={{ color: modeColor, opacity: 0.8 }}
+                      >
+                        LIVE
+                      </span>
+                    </div>
+                  </motion.div>
+                )}
+                {!tempDisplay && (
+                  <span className="text-xs" style={{ color: "#A7B2C6" }}>
+                    {Math.round(dispenseProgress)}%
+                  </span>
+                )}
+              </motion.div>
+            ) : mode === "HOT" && !isHotLocked ? (
+              <motion.div
+                key="unlocked"
+                className="flex flex-col items-center gap-1"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+              >
+                <span className="text-3xl">🔓</span>
+                <span className="text-[10px]" style={{ color: "#A7B2C6" }}>
+                  tap to dispense
                 </span>
               </motion.div>
             ) : (

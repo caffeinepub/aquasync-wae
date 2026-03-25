@@ -2,7 +2,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { BottomNav } from "./components/BottomNav";
-import { ControlTempPanel } from "./components/ControlTempPanel";
 import { DispenseCircle } from "./components/DispenseCircle";
 import { HistoryTab } from "./components/HistoryTab";
 import { SettingsTab } from "./components/SettingsTab";
@@ -103,8 +102,6 @@ function AppHeader() {
   );
 }
 
-type TempMode = "cold" | "hot" | "ambient";
-
 interface TempSelectorProps {
   isDispensing: boolean;
   dispenseProgress: number;
@@ -122,20 +119,38 @@ function TempSelector({
   ambientTemp,
   hotTemp,
 }: TempSelectorProps) {
-  const [tempMode, setTempMode] = useState<TempMode>("cold");
   const [btTempSync, setBtTempSync] = useState(false);
 
-  const isCold = tempMode === "cold";
-  const isHot = tempMode === "hot";
-  const isAmbient = tempMode === "ambient";
-
-  const selectedColor = isCold ? "#22D3EE" : isHot ? "#FB7185" : "#34D399";
-  const selectedRgb = isCold
-    ? "34,211,238"
-    : isHot
-      ? "251,113,133"
-      : "52,211,153";
-  const selectedLabel = isCold ? "Cold Water" : isHot ? "Hot Water" : "Ambient";
+  // Cards config in Hot → Cold → Ambient order
+  const cards = [
+    {
+      key: "hot",
+      emoji: "🔥",
+      label: "Hot",
+      color: "#FB7185",
+      rgb: "251,113,133",
+      defaultTemp: "~ 85°C",
+      liveTemp: `${hotTemp.toFixed(1)}°C`,
+    },
+    {
+      key: "cold",
+      emoji: "❄️",
+      label: "Cold",
+      color: "#22D3EE",
+      rgb: "34,211,238",
+      defaultTemp: "~ 10°C",
+      liveTemp: `${coldTemp.toFixed(1)}°C`,
+    },
+    {
+      key: "ambient",
+      emoji: "🌿",
+      label: "Ambient",
+      color: "#34D399",
+      rgb: "52,211,153",
+      defaultTemp: "~ 25°C",
+      liveTemp: `${ambientTemp.toFixed(1)}°C`,
+    },
+  ];
 
   return (
     <motion.div
@@ -148,93 +163,8 @@ function TempSelector({
       <p className="text-xs font-semibold mb-3" style={{ color: "#A7B2C6" }}>
         🌡️ Temperature Mode
       </p>
-      <div className="flex gap-2 mb-4">
-        {/* Cold Button */}
-        <button
-          type="button"
-          data-ocid="dashboard.temp_cold.toggle"
-          onClick={() => setTempMode("cold")}
-          onKeyDown={(e) => e.key === "Enter" && setTempMode("cold")}
-          className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
-          style={{
-            background: isCold
-              ? "rgba(34,211,238,0.18)"
-              : "rgba(255,255,255,0.05)",
-            border: isCold
-              ? "1.5px solid rgba(34,211,238,0.6)"
-              : "1.5px solid rgba(255,255,255,0.1)",
-            color: isCold ? "#22D3EE" : "#A7B2C6",
-            boxShadow: isCold ? "0 0 18px rgba(34,211,238,0.25)" : "none",
-          }}
-        >
-          <span className="text-xl">❄️</span>
-          <span>Cold</span>
-        </button>
 
-        {/* Ambient Button */}
-        <button
-          type="button"
-          data-ocid="dashboard.temp_ambient.toggle"
-          onClick={() => setTempMode("ambient")}
-          onKeyDown={(e) => e.key === "Enter" && setTempMode("ambient")}
-          className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
-          style={{
-            background: isAmbient
-              ? "rgba(52,211,153,0.18)"
-              : "rgba(255,255,255,0.05)",
-            border: isAmbient
-              ? "1.5px solid rgba(52,211,153,0.6)"
-              : "1.5px solid rgba(255,255,255,0.1)",
-            color: isAmbient ? "#34D399" : "#A7B2C6",
-            boxShadow: isAmbient ? "0 0 18px rgba(52,211,153,0.25)" : "none",
-          }}
-        >
-          <span className="text-xl">🌿</span>
-          <span>Ambient</span>
-        </button>
-
-        {/* Hot Button */}
-        <button
-          type="button"
-          data-ocid="dashboard.temp_hot.toggle"
-          onClick={() => setTempMode("hot")}
-          onKeyDown={(e) => e.key === "Enter" && setTempMode("hot")}
-          className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
-          style={{
-            background: isHot
-              ? "rgba(251,113,133,0.18)"
-              : "rgba(255,255,255,0.05)",
-            border: isHot
-              ? "1.5px solid rgba(251,113,133,0.6)"
-              : "1.5px solid rgba(255,255,255,0.1)",
-            color: isHot ? "#FB7185" : "#A7B2C6",
-            boxShadow: isHot ? "0 0 18px rgba(251,113,133,0.25)" : "none",
-          }}
-        >
-          <span className="text-xl">🔥</span>
-          <span>Hot</span>
-        </button>
-      </div>
-
-      {/* All three temperature cards */}
-      {isDispensing && (
-        <div
-          className="flex items-center justify-center gap-2 mb-3 py-1.5 rounded-xl"
-          style={{
-            background: `rgba(${selectedRgb},0.1)`,
-            border: `1px solid rgba(${selectedRgb},0.3)`,
-          }}
-        >
-          <motion.span
-            animate={{ opacity: [1, 0.4, 1] }}
-            transition={{ repeat: Number.POSITIVE_INFINITY, duration: 1 }}
-            className="text-sm font-semibold"
-            style={{ color: selectedColor }}
-          >
-            💧 Dispensing {selectedLabel}...
-          </motion.span>
-        </div>
-      )}
+      {/* Dispensing progress bar */}
       {isDispensing && (
         <div
           className="w-full h-1 rounded-full mb-3 overflow-hidden"
@@ -242,55 +172,51 @@ function TempSelector({
         >
           <motion.div
             className="h-full rounded-full"
-            style={{ background: selectedColor, width: `${dispenseProgress}%` }}
+            style={{
+              background:
+                "linear-gradient(to right, #FB7185, #22D3EE, #34D399)",
+              width: `${dispenseProgress}%`,
+            }}
             transition={{ duration: 0.1 }}
           />
         </div>
       )}
+
+      {/* Three temperature cards: Hot → Cold → Ambient */}
       <div className="flex gap-2">
-        {/* Cold card */}
-        {(() => {
-          const isSelected = tempMode === "cold";
-          const dispColor = "#22D3EE";
-          const dispRgb = "34,211,238";
-          const dispTemp =
-            isDispensing && isSelected ? `${coldTemp.toFixed(1)}°C` : "~ 10°C";
+        {cards.map((card) => {
+          const displayTemp = isDispensing ? card.liveTemp : card.defaultTemp;
           return (
             <div
-              className="flex-1 flex flex-col items-center py-3 rounded-2xl transition-all duration-300 cursor-pointer"
+              key={card.key}
+              className="flex-1 flex flex-col items-center py-3 px-1 rounded-2xl"
               style={{
-                background: isSelected
-                  ? `rgba(${dispRgb},0.14)`
-                  : "rgba(255,255,255,0.04)",
-                border: isSelected
-                  ? `1.5px solid rgba(${dispRgb},0.55)`
-                  : "1.5px solid rgba(255,255,255,0.08)",
-                boxShadow: isSelected
-                  ? `0 0 18px rgba(${dispRgb},0.2)`
-                  : "none",
+                background: `rgba(${card.rgb},0.10)`,
+                border: `1.5px solid rgba(${card.rgb},0.35)`,
               }}
-              onClick={() => setTempMode("cold")}
-              onKeyDown={(e) => e.key === "Enter" && setTempMode("cold")}
             >
-              <span className="text-2xl mb-1">❄️</span>
+              <span className="text-2xl mb-1">{card.emoji}</span>
+              <p
+                className="text-[11px] font-semibold mb-1"
+                style={{ color: "#A7B2C6" }}
+              >
+                {card.label}
+              </p>
               <motion.p
-                key={dispTemp}
+                key={displayTemp}
                 initial={{ opacity: 0.6, y: -3 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.25 }}
-                className="text-lg font-bold leading-none"
-                style={{ color: dispColor }}
+                className="text-base font-bold leading-none"
+                style={{ color: card.color }}
               >
-                {dispTemp}
+                {displayTemp}
               </motion.p>
-              <p className="text-[10px] mt-1" style={{ color: "#A7B2C6" }}>
-                Cold
-              </p>
-              {isDispensing && isSelected && (
-                <div className="flex items-center gap-1 mt-1">
+              {isDispensing && (
+                <div className="flex items-center gap-1 mt-1.5">
                   <motion.span
                     className="w-1.5 h-1.5 rounded-full block"
-                    style={{ background: "#34D399" }}
+                    style={{ background: card.color }}
                     animate={{ opacity: [1, 0.3, 1], scale: [1, 1.5, 1] }}
                     transition={{
                       repeat: Number.POSITIVE_INFINITY,
@@ -299,7 +225,7 @@ function TempSelector({
                   />
                   <span
                     className="text-[9px] font-semibold"
-                    style={{ color: "#34D399" }}
+                    style={{ color: card.color }}
                   >
                     Live
                   </span>
@@ -307,129 +233,7 @@ function TempSelector({
               )}
             </div>
           );
-        })()}
-        {/* Ambient card */}
-        {(() => {
-          const isSelected = tempMode === "ambient";
-          const dispColor = "#34D399";
-          const dispRgb = "52,211,153";
-          const dispTemp =
-            isDispensing && isSelected
-              ? `${ambientTemp.toFixed(1)}°C`
-              : "~ 25°C";
-          return (
-            <div
-              className="flex-1 flex flex-col items-center py-3 rounded-2xl transition-all duration-300 cursor-pointer"
-              style={{
-                background: isSelected
-                  ? `rgba(${dispRgb},0.14)`
-                  : "rgba(255,255,255,0.04)",
-                border: isSelected
-                  ? `1.5px solid rgba(${dispRgb},0.55)`
-                  : "1.5px solid rgba(255,255,255,0.08)",
-                boxShadow: isSelected
-                  ? `0 0 18px rgba(${dispRgb},0.2)`
-                  : "none",
-              }}
-              onClick={() => setTempMode("ambient")}
-              onKeyDown={(e) => e.key === "Enter" && setTempMode("ambient")}
-            >
-              <span className="text-2xl mb-1">🌿</span>
-              <motion.p
-                key={dispTemp}
-                initial={{ opacity: 0.6, y: -3 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-                className="text-lg font-bold leading-none"
-                style={{ color: dispColor }}
-              >
-                {dispTemp}
-              </motion.p>
-              <p className="text-[10px] mt-1" style={{ color: "#A7B2C6" }}>
-                Ambient
-              </p>
-              {isDispensing && isSelected && (
-                <div className="flex items-center gap-1 mt-1">
-                  <motion.span
-                    className="w-1.5 h-1.5 rounded-full block"
-                    style={{ background: "#34D399" }}
-                    animate={{ opacity: [1, 0.3, 1], scale: [1, 1.5, 1] }}
-                    transition={{
-                      repeat: Number.POSITIVE_INFINITY,
-                      duration: 1.2,
-                    }}
-                  />
-                  <span
-                    className="text-[9px] font-semibold"
-                    style={{ color: "#34D399" }}
-                  >
-                    Live
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-        {/* Hot card */}
-        {(() => {
-          const isSelected = tempMode === "hot";
-          const dispColor = "#FB7185";
-          const dispRgb = "251,113,133";
-          const dispTemp =
-            isDispensing && isSelected ? `${hotTemp.toFixed(1)}°C` : "~ 85°C";
-          return (
-            <div
-              className="flex-1 flex flex-col items-center py-3 rounded-2xl transition-all duration-300 cursor-pointer"
-              style={{
-                background: isSelected
-                  ? `rgba(${dispRgb},0.14)`
-                  : "rgba(255,255,255,0.04)",
-                border: isSelected
-                  ? `1.5px solid rgba(${dispRgb},0.55)`
-                  : "1.5px solid rgba(255,255,255,0.08)",
-                boxShadow: isSelected
-                  ? `0 0 18px rgba(${dispRgb},0.2)`
-                  : "none",
-              }}
-              onClick={() => setTempMode("hot")}
-              onKeyDown={(e) => e.key === "Enter" && setTempMode("hot")}
-            >
-              <span className="text-2xl mb-1">🔥</span>
-              <motion.p
-                key={dispTemp}
-                initial={{ opacity: 0.6, y: -3 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25 }}
-                className="text-lg font-bold leading-none"
-                style={{ color: dispColor }}
-              >
-                {dispTemp}
-              </motion.p>
-              <p className="text-[10px] mt-1" style={{ color: "#A7B2C6" }}>
-                Hot
-              </p>
-              {isDispensing && isSelected && (
-                <div className="flex items-center gap-1 mt-1">
-                  <motion.span
-                    className="w-1.5 h-1.5 rounded-full block"
-                    style={{ background: "#34D399" }}
-                    animate={{ opacity: [1, 0.3, 1], scale: [1, 1.5, 1] }}
-                    transition={{
-                      repeat: Number.POSITIVE_INFINITY,
-                      duration: 1.2,
-                    }}
-                  />
-                  <span
-                    className="text-[9px] font-semibold"
-                    style={{ color: "#34D399" }}
-                  >
-                    Live
-                  </span>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+        })}
       </div>
 
       {/* Bluetooth temperature sync toggle */}
@@ -642,6 +446,7 @@ export default function App() {
                   onCancelHotUnlock={state.cancelHotUnlock}
                   onStartDispense={state.startDispense}
                   onStopDispense={state.stopDispense}
+                  liveTemp={controlLiveTemp}
                 />
               </div>
 
@@ -678,15 +483,6 @@ export default function App() {
                       : "⭕ Disconnected"}
                 </span>
               </div>
-
-              {/* Temperature panel — visible only while dispensing */}
-              <ControlTempPanel
-                mode={state.mode}
-                isDispensing={state.isDispensing}
-                dispenseProgress={state.dispenseProgress}
-                liveTemp={controlLiveTemp}
-                btSensorActive={state.connectionMode === "bluetooth"}
-              />
             </motion.div>
           )}
 
