@@ -2,12 +2,15 @@ import { Toaster } from "@/components/ui/sonner";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { BottomNav } from "./components/BottomNav";
+import { ControlTempPanel } from "./components/ControlTempPanel";
 import { DispenseCircle } from "./components/DispenseCircle";
 import { HistoryTab } from "./components/HistoryTab";
 import { SettingsTab } from "./components/SettingsTab";
 import { Sparklines } from "./components/Sparklines";
+import { TDSPurificationLevel } from "./components/TDSPurificationLevel";
 import { useDispenser } from "./hooks/useDispenser";
 import { getWaterInsight } from "./lib/insights";
+import type { ConnectionMode } from "./types/dispenser";
 
 // Starfield background — purely decorative
 const STARS = Array.from({ length: 60 }, (_, i) => ({
@@ -48,24 +51,10 @@ function AppHeader() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      {/* WAE Logo */}
-      <div className="flex justify-center mb-3">
-        <img
-          src="/assets/uploads/wae-logo_hd_white-019d234d-4858-7738-8435-dd85271554ee-1.png"
-          alt="WAE Logo"
-          style={{
-            maxWidth: 160,
-            height: "auto",
-            display: "block",
-            opacity: 0.92,
-            mixBlendMode: "screen",
-          }}
-        />
-      </div>
-      {/* Company name */}
+      {/* WAE brand name */}
       <p
-        className="text-xs font-bold tracking-[0.25em] uppercase mb-1"
-        style={{ color: "#A7B2C6" }}
+        className="text-xs font-bold tracking-[0.3em] uppercase mb-1"
+        style={{ color: "rgba(167,178,198,0.6)" }}
       >
         WAE
       </p>
@@ -114,11 +103,47 @@ function AppHeader() {
   );
 }
 
-type TempMode = "cold" | "hot";
+type TempMode = "cold" | "hot" | "ambient";
 
-function TempSelector() {
+interface TempSelectorProps {
+  isDispensing: boolean;
+  dispenseProgress: number;
+  connectionMode: ConnectionMode;
+  coldTemp: number;
+  ambientTemp: number;
+  hotTemp: number;
+}
+
+function TempSelector({
+  isDispensing,
+  dispenseProgress,
+  connectionMode,
+  coldTemp,
+  ambientTemp,
+  hotTemp,
+}: TempSelectorProps) {
   const [tempMode, setTempMode] = useState<TempMode>("cold");
+  const [btTempSync, setBtTempSync] = useState(false);
+
   const isCold = tempMode === "cold";
+  const isHot = tempMode === "hot";
+  const isAmbient = tempMode === "ambient";
+
+  const selectedColor = isCold ? "#22D3EE" : isHot ? "#FB7185" : "#34D399";
+  const selectedRgb = isCold
+    ? "34,211,238"
+    : isHot
+      ? "251,113,133"
+      : "52,211,153";
+  const selectedEmoji = isCold ? "❄️" : isHot ? "🔥" : "🌿";
+  const selectedLabel = isCold ? "Cold Water" : isHot ? "Hot Water" : "Ambient";
+  const liveTemp = isCold ? coldTemp : isHot ? hotTemp : ambientTemp;
+  const staticTemp = isCold ? "~ 10°C" : isHot ? "~ 85°C" : "~ 25°C";
+  const staticDesc = isCold
+    ? "Chilled water"
+    : isHot
+      ? "Hot water"
+      : "Room temperature";
 
   return (
     <motion.div
@@ -131,13 +156,13 @@ function TempSelector() {
       <p className="text-xs font-semibold mb-3" style={{ color: "#A7B2C6" }}>
         🌡️ Temperature Mode
       </p>
-      <div className="flex gap-3 mb-4">
+      <div className="flex gap-2 mb-4">
         {/* Cold Button */}
         <button
           type="button"
           data-ocid="dashboard.temp_cold.toggle"
           onClick={() => setTempMode("cold")}
-          className="flex-1 py-3 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
+          className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
           style={{
             background: isCold
               ? "rgba(34,211,238,0.18)"
@@ -149,8 +174,29 @@ function TempSelector() {
             boxShadow: isCold ? "0 0 18px rgba(34,211,238,0.25)" : "none",
           }}
         >
-          <span className="text-2xl">❄️</span>
+          <span className="text-xl">❄️</span>
           <span>Cold</span>
+        </button>
+
+        {/* Ambient Button */}
+        <button
+          type="button"
+          data-ocid="dashboard.temp_ambient.toggle"
+          onClick={() => setTempMode("ambient")}
+          className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
+          style={{
+            background: isAmbient
+              ? "rgba(52,211,153,0.18)"
+              : "rgba(255,255,255,0.05)",
+            border: isAmbient
+              ? "1.5px solid rgba(52,211,153,0.6)"
+              : "1.5px solid rgba(255,255,255,0.1)",
+            color: isAmbient ? "#34D399" : "#A7B2C6",
+            boxShadow: isAmbient ? "0 0 18px rgba(52,211,153,0.25)" : "none",
+          }}
+        >
+          <span className="text-xl">🌿</span>
+          <span>Ambient</span>
         </button>
 
         {/* Hot Button */}
@@ -158,55 +204,209 @@ function TempSelector() {
           type="button"
           data-ocid="dashboard.temp_hot.toggle"
           onClick={() => setTempMode("hot")}
-          className="flex-1 py-3 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
+          className="flex-1 py-2.5 rounded-2xl text-sm font-bold transition-all duration-300 flex flex-col items-center gap-1"
           style={{
-            background: !isCold
+            background: isHot
               ? "rgba(251,113,133,0.18)"
               : "rgba(255,255,255,0.05)",
-            border: !isCold
+            border: isHot
               ? "1.5px solid rgba(251,113,133,0.6)"
               : "1.5px solid rgba(255,255,255,0.1)",
-            color: !isCold ? "#FB7185" : "#A7B2C6",
-            boxShadow: !isCold ? "0 0 18px rgba(251,113,133,0.25)" : "none",
+            color: isHot ? "#FB7185" : "#A7B2C6",
+            boxShadow: isHot ? "0 0 18px rgba(251,113,133,0.25)" : "none",
           }}
         >
-          <span className="text-2xl">🔥</span>
+          <span className="text-xl">🔥</span>
           <span>Hot</span>
         </button>
       </div>
 
       {/* Temperature display */}
       <AnimatePresence mode="wait">
-        <motion.div
-          key={tempMode}
-          initial={{ opacity: 0, scale: 0.92 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.92 }}
-          transition={{ duration: 0.2 }}
-          className="flex items-center justify-center gap-3 py-3 rounded-2xl"
+        {!isDispensing ? (
+          /* Static mode display */
+          <motion.div
+            key={tempMode}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.92 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center justify-center gap-3 py-3 rounded-2xl"
+            style={{
+              background: `rgba(${selectedRgb},0.08)`,
+              border: `1px solid rgba(${selectedRgb},0.2)`,
+            }}
+          >
+            <span className="text-3xl">{selectedEmoji}</span>
+            <div>
+              <p
+                className="text-3xl font-bold leading-none"
+                style={{ color: selectedColor }}
+              >
+                {staticTemp}
+              </p>
+              <p className="text-xs mt-1" style={{ color: "#A7B2C6" }}>
+                {staticDesc}
+              </p>
+            </div>
+          </motion.div>
+        ) : (
+          /* Dispensing mode — show ONLY the selected temperature live */
+          <motion.div
+            key="dispensing"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            transition={{ duration: 0.25 }}
+          >
+            {/* Dispensing banner */}
+            <div
+              className="flex items-center justify-center gap-2 mb-2 py-1.5 rounded-xl"
+              style={{
+                background: `rgba(${selectedRgb},0.1)`,
+                border: `1px solid rgba(${selectedRgb},0.3)`,
+              }}
+            >
+              <motion.span
+                animate={{ opacity: [1, 0.4, 1] }}
+                transition={{ repeat: Number.POSITIVE_INFINITY, duration: 1 }}
+                className="text-sm font-semibold"
+                style={{ color: selectedColor }}
+              >
+                💧 Dispensing {selectedLabel}...
+              </motion.span>
+            </div>
+
+            {/* Progress bar */}
+            <div
+              className="w-full h-1 rounded-full mb-4 overflow-hidden"
+              style={{ background: "rgba(255,255,255,0.08)" }}
+            >
+              <motion.div
+                className="h-full rounded-full"
+                style={{
+                  background: selectedColor,
+                  width: `${dispenseProgress}%`,
+                }}
+                transition={{ duration: 0.1 }}
+              />
+            </div>
+
+            {/* Single selected temperature — large focal display */}
+            <div
+              className="flex flex-col items-center py-5 rounded-2xl"
+              style={{
+                background: `rgba(${selectedRgb},0.1)`,
+                border: `1px solid rgba(${selectedRgb},0.35)`,
+                boxShadow: `0 0 24px rgba(${selectedRgb},0.12)`,
+              }}
+            >
+              <motion.span
+                className="text-4xl mb-2"
+                animate={{ scale: [1, 1.06, 1] }}
+                transition={{
+                  repeat: Number.POSITIVE_INFINITY,
+                  duration: 2.5,
+                  ease: "easeInOut",
+                }}
+              >
+                {selectedEmoji}
+              </motion.span>
+
+              <motion.p
+                key={liveTemp}
+                initial={{ opacity: 0.6, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="text-5xl font-bold leading-none mb-1"
+                style={{ color: selectedColor }}
+              >
+                {liveTemp.toFixed(1)}°C
+              </motion.p>
+
+              <p
+                className="text-xs font-medium mt-1 mb-3"
+                style={{ color: "#A7B2C6" }}
+              >
+                {selectedLabel}
+              </p>
+
+              {/* Pulsing live badge */}
+              <div className="flex items-center gap-1.5">
+                <motion.span
+                  className="w-2 h-2 rounded-full block"
+                  style={{ background: "#34D399" }}
+                  animate={{ opacity: [1, 0.3, 1], scale: [1, 1.5, 1] }}
+                  transition={{
+                    repeat: Number.POSITIVE_INFINITY,
+                    duration: 1.2,
+                  }}
+                />
+                <span
+                  className="text-[11px] font-semibold"
+                  style={{ color: "#34D399" }}
+                >
+                  {btTempSync && connectionMode === "bluetooth"
+                    ? "Live from BT Sensor"
+                    : "Live"}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Bluetooth temperature sync toggle */}
+      <div
+        className="flex items-center justify-between mt-4 pt-3"
+        style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-sm">🔵</span>
+          <span className="text-xs font-medium" style={{ color: "#A7B2C6" }}>
+            Sync Temp from BT Sensor
+          </span>
+        </div>
+        <button
+          type="button"
+          data-ocid="dashboard.bt_temp_sync.toggle"
+          onClick={() => setBtTempSync((v) => !v)}
+          className="px-3 py-1 rounded-full text-xs font-semibold transition-all duration-300"
           style={{
-            background: isCold
-              ? "rgba(34,211,238,0.08)"
-              : "rgba(251,113,133,0.08)",
-            border: `1px solid ${
-              isCold ? "rgba(34,211,238,0.2)" : "rgba(251,113,133,0.2)"
-            }`,
+            background: btTempSync
+              ? "rgba(52,211,153,0.18)"
+              : "rgba(255,255,255,0.07)",
+            border: btTempSync
+              ? "1px solid rgba(52,211,153,0.5)"
+              : "1px solid rgba(255,255,255,0.14)",
+            color: btTempSync ? "#34D399" : "#7F8AA3",
           }}
         >
-          <span className="text-3xl">{isCold ? "❄️" : "🔥"}</span>
-          <div>
-            <p
-              className="text-3xl font-bold leading-none"
-              style={{ color: isCold ? "#22D3EE" : "#FB7185" }}
-            >
-              {isCold ? "~ 10°C" : "~ 85°C"}
-            </p>
-            <p className="text-xs mt-1" style={{ color: "#A7B2C6" }}>
-              {isCold ? "Chilled water" : "Hot water"}
-            </p>
-          </div>
-        </motion.div>
-      </AnimatePresence>
+          {btTempSync ? "Live from Sensor" : "Manual"}
+        </button>
+      </div>
+
+      {btTempSync && connectionMode === "bluetooth" && (
+        <motion.p
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: "auto" }}
+          className="text-[11px] mt-2 flex items-center gap-1"
+          style={{ color: "#34D399" }}
+        >
+          <motion.span
+            animate={{ opacity: [1, 0.4, 1] }}
+            transition={{ repeat: Number.POSITIVE_INFINITY, duration: 1.2 }}
+          >
+            ●
+          </motion.span>
+          Temperature updating live from Bluetooth sensor
+        </motion.p>
+      )}
+      {btTempSync && connectionMode !== "bluetooth" && (
+        <p className="text-[11px] mt-2" style={{ color: "#FBBF24" }}>
+          ⚠️ Connect Bluetooth sensor to enable live sync
+        </p>
+      )}
     </motion.div>
   );
 }
@@ -214,6 +414,13 @@ function TempSelector() {
 export default function App() {
   const state = useDispenser();
   const insight = getWaterInsight(state.tds, state.ph);
+
+  const controlLiveTemp =
+    state.mode === "HOT"
+      ? state.hotTemp
+      : state.mode === "COLD"
+        ? state.coldTemp
+        : state.ambientTemp;
 
   return (
     <div className="relative min-h-screen">
@@ -243,8 +450,18 @@ export default function App() {
                 phHistory={state.phHistory}
               />
 
+              {/* TDS Purification Level */}
+              <TDSPurificationLevel tds={state.tds} />
+
               {/* Hot & Cold Temperature Selector */}
-              <TempSelector />
+              <TempSelector
+                isDispensing={state.isDispensing}
+                dispenseProgress={state.dispenseProgress}
+                connectionMode={state.connectionMode}
+                coldTemp={state.coldTemp}
+                ambientTemp={state.ambientTemp}
+                hotTemp={state.hotTemp}
+              />
 
               {/* Water Quality Insight card */}
               <motion.div
@@ -385,6 +602,15 @@ export default function App() {
                       : "⭕ Disconnected"}
                 </span>
               </div>
+
+              {/* Temperature panel — visible only while dispensing */}
+              <ControlTempPanel
+                mode={state.mode}
+                isDispensing={state.isDispensing}
+                dispenseProgress={state.dispenseProgress}
+                liveTemp={controlLiveTemp}
+                btSensorActive={state.connectionMode === "bluetooth"}
+              />
             </motion.div>
           )}
 

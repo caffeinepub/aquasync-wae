@@ -5,7 +5,11 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { connectBluetooth, sendATCommand } from "../lib/bluetooth";
+import {
+  connectBluetooth,
+  sendATCommand,
+  subscribeSensorNotifications,
+} from "../lib/bluetooth";
 import { logDispenseEvent, signInAnon } from "../lib/firebase";
 import { parseKeywordCommand } from "../lib/insights";
 import type {
@@ -51,16 +55,24 @@ export function useDispenser() {
     useState<BluetoothRemoteGATTCharacteristic | null>(null);
   const [bluetoothDevice, setBluetoothDevice] =
     useState<BluetoothDevice | null>(null);
+  // Whether real sensor notifications are active (BT-connected with sensor char)
+  const btSensorActiveRef = useRef(false);
+  const unsubscribeSensorRef = useRef<(() => void) | null>(null);
 
   // ── Sensor data ──────────────────────────────────────────────────────────
-  const [tds, setTds] = useState(24);
+  const [tds, setTds] = useState(120);
   const [ph, setPh] = useState(7.1);
   const [tdsHistory, setTdsHistory] = useState<number[]>(() =>
-    generateHistory(24, 6),
+    generateHistory(120, 30),
   );
   const [phHistory, setPhHistory] = useState<number[]>(() =>
     generateHistory(7.1, 0.15),
   );
+
+  // ── Live temperature state ────────────────────────────────────────────────
+  const [coldTemp, setColdTemp] = useState(10.0);
+  const [ambientTemp, setAmbientTemp] = useState(25.0);
+  const [hotTemp, setHotTemp] = useState(85.0);
 
   // ── Logs ─────────────────────────────────────────────────────────────────
   const [logs, setLogs] = useState<DispenseLog[]>([]);
@@ -79,6 +91,7 @@ export function useDispenser() {
     null,
   );
   const sensorIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tempIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Firebase anonymous auth on mount ─────────────────────────────────────
   useEffect(() => {
@@ -87,13 +100,14 @@ export function useDispenser() {
     });
   }, []);
 
-  // ── Simulated sensor drift (update every 5 seconds) ──────────────────────
+  // ── Simulated sensor drift (only when NOT on real BT sensor) ─────────────
   useEffect(() => {
     sensorIntervalRef.current = setInterval(() => {
+      if (btSensorActiveRef.current) return; // real sensor is driving updates
       setTds((prev) => {
         const next = Math.max(
-          5,
-          Math.min(80, prev + (Math.random() - 0.5) * 2),
+          55,
+          Math.min(290, prev + (Math.random() - 0.5) * 15),
         );
         setTdsHistory((h) => [...h.slice(1), Math.round(next)]);
         return Math.round(next);
@@ -111,6 +125,34 @@ export function useDispenser() {
       if (sensorIntervalRef.current) clearInterval(sensorIntervalRef.current);
     };
   }, []);
+
+  // ── Simulated temperature drift — only when dispensing ───────────────────
+  useEffect(() => {
+    if (!isDispensing || btSensorActiveRef.current) return;
+    tempIntervalRef.current = setInterval(() => {
+      setColdTemp(
+        (prev) =>
+          Math.round(
+            Math.max(8, Math.min(14, prev + (Math.random() - 0.5) * 1)) * 10,
+          ) / 10,
+      );
+      setAmbientTemp(
+        (prev) =>
+          Math.round(
+            Math.max(22, Math.min(28, prev + (Math.random() - 0.5) * 0.6)) * 10,
+          ) / 10,
+      );
+      setHotTemp(
+        (prev) =>
+          Math.round(
+            Math.max(80, Math.min(90, prev + (Math.random() - 0.5) * 2)) * 10,
+          ) / 10,
+      );
+    }, 3000);
+    return () => {
+      if (tempIntervalRef.current) clearInterval(tempIntervalRef.current);
+    };
+  }, [isDispensing]);
 
   // ── Hot-water auto re-lock countdown ─────────────────────────────────────
   useEffect(() => {
@@ -133,7 +175,7 @@ export function useDispenser() {
     };
   }, [mode, isHotLocked]);
 
-  // ── Cleanup all intervals on unmount ─────────────────────────────────────
+  // ── Cleanup all intervals and BT sensor on unmount ───────────────────────
   useEffect(() => {
     return () => {
       for (const ref of [
@@ -141,9 +183,11 @@ export function useDispenser() {
         relockIntervalRef,
         dispenseIntervalRef,
         sensorIntervalRef,
+        tempIntervalRef,
       ]) {
         if (ref.current) clearInterval(ref.current);
       }
+      unsubscribeSensorRef.current?.();
     };
   }, []);
 
@@ -179,10 +223,10 @@ export function useDispenser() {
 
   // ── Hot unlock: start hold ─────────────────────────────────────────────────
   const startHotUnlock = useCallback(() => {
-    if (unlockIntervalRef.current) return; // already running
+    if (unlockIntervalRef.current) return;
     unlockIntervalRef.current = setInterval(() => {
       setHotUnlockProgress((prev) => {
-        const next = prev + 5; // 5% per 100ms => 2 seconds to reach 100
+        const next = prev + 5;
         if (next >= 100) {
           clearInterval(unlockIntervalRef.current!);
           unlockIntervalRef.current = null;
@@ -206,7 +250,7 @@ export function useDispenser() {
     setHotUnlockProgress(0);
   }, []);
 
-  // ── Reset hot relock timer (called on any activity) ───────────────────────
+  // ── Reset hot relock timer ────────────────────────────────────────────────
   const resetHotRelockTimer = useCallback(() => {
     if (mode === "HOT" && !isHotLocked) {
       setHotRelockCountdown(30);
@@ -222,20 +266,17 @@ export function useDispenser() {
     setIsDispensing(true);
     setDispenseProgress(0);
 
-    // Send AT commands
     await sendCommand(`AT+MODE=${mode}`);
     await sendCommand(`AT+VOL=${volume}`);
     await sendCommand("AT+DISPENSE");
 
-    // Animate progress ring: 0 → 100 over ~3 seconds (100ms ticks)
     dispenseIntervalRef.current = setInterval(() => {
       setDispenseProgress((prev) => {
-        const next = prev + 3.34; // ~30 ticks to reach 100
+        const next = prev + 3.34;
         if (next >= 100) {
           clearInterval(dispenseIntervalRef.current!);
           dispenseIntervalRef.current = null;
 
-          // Complete dispense
           const logEntry: DispenseLog = {
             timestamp: Date.now(),
             mode,
@@ -287,7 +328,45 @@ export function useDispenser() {
       setConnectionMode("bluetooth");
       toast.success(`Connected to ${conn.device.name ?? "device"}`);
 
+      // Subscribe to real-time sensor notifications if hardware supports it
+      if (conn.sensorCharacteristic) {
+        btSensorActiveRef.current = true;
+        const unsub = subscribeSensorNotifications(
+          conn.sensorCharacteristic,
+          (data) => {
+            if (data.tds !== undefined) {
+              const rounded = Math.round(data.tds);
+              setTds(rounded);
+              setTdsHistory((h) => [...h.slice(1), rounded]);
+            }
+            if (data.ph !== undefined) {
+              const rounded = Math.round(data.ph * 10) / 10;
+              setPh(rounded);
+              setPhHistory((h) => [...h.slice(1), rounded]);
+            }
+            // Live temperature from BT sensor
+            if (data.temperature !== undefined) {
+              const t = data.temperature as {
+                hot?: number;
+                cold?: number;
+                ambient?: number;
+              };
+              if (t.cold !== undefined)
+                setColdTemp(Math.round(t.cold * 10) / 10);
+              if (t.ambient !== undefined)
+                setAmbientTemp(Math.round(t.ambient * 10) / 10);
+              if (t.hot !== undefined) setHotTemp(Math.round(t.hot * 10) / 10);
+            }
+          },
+        );
+        unsubscribeSensorRef.current = unsub;
+      }
+
       conn.device.addEventListener("gattserverdisconnected", () => {
+        // Unsubscribe sensor and revert to simulation drift
+        unsubscribeSensorRef.current?.();
+        unsubscribeSensorRef.current = null;
+        btSensorActiveRef.current = false;
         setConnectionMode("simulation");
         setBluetoothCharacteristic(null);
         setBluetoothDevice(null);
@@ -304,6 +383,9 @@ export function useDispenser() {
 
   // ── Bluetooth disconnect ───────────────────────────────────────────────────
   const disconnectBT = useCallback(() => {
+    unsubscribeSensorRef.current?.();
+    unsubscribeSensorRef.current = null;
+    btSensorActiveRef.current = false;
     if (bluetoothDevice?.gatt?.connected) {
       bluetoothDevice.gatt.disconnect();
     }
@@ -364,6 +446,10 @@ export function useDispenser() {
     ph,
     tdsHistory,
     phHistory,
+    // Live temperatures
+    coldTemp,
+    ambientTemp,
+    hotTemp,
     // Logs
     logs,
     userId,

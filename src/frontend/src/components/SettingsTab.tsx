@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import type { ConnectionMode } from "../types/dispenser";
+import { MachineRegister } from "./MachineRegister";
 import { PurificationFlow } from "./PurificationFlow";
 
 interface SettingsTabProps {
@@ -17,27 +18,6 @@ interface SettingsTabProps {
   onCommandSubmit: () => void;
 }
 
-const STATUS_CONFIG: Record<
-  ConnectionMode,
-  { label: string; color: string; bg: string }
-> = {
-  bluetooth: {
-    label: "Connected",
-    color: "#34D399",
-    bg: "rgba(52,211,153,0.12)",
-  },
-  simulation: {
-    label: "Simulation Mode",
-    color: "#FBBF24",
-    bg: "rgba(251,191,36,0.12)",
-  },
-  disconnected: {
-    label: "Disconnected",
-    color: "#FB7185",
-    bg: "rgba(251,113,133,0.12)",
-  },
-};
-
 export function SettingsTab({
   userId,
   connectionMode,
@@ -51,7 +31,6 @@ export function SettingsTab({
   onCommandSubmit,
 }: SettingsTabProps) {
   const consoleRef = useRef<HTMLDivElement>(null);
-  const status = STATUS_CONFIG[connectionMode];
 
   // Auto-scroll simulation console when log updates
   // biome-ignore lint/correctness/useExhaustiveDependencies: consoleRef is a stable ref, not a reactive value
@@ -142,72 +121,20 @@ export function SettingsTab({
         </p>
       </motion.div>
 
-      {/* Hardware Section */}
+      {/* Machine Register Section — replaces Bluetooth Hardware */}
       <motion.div
         className="glass-card p-5"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
+        data-ocid="settings.machine_register_panel"
       >
-        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-          <span>📡</span> Bluetooth Hardware
-        </h3>
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm" style={{ color: "#A7B2C6" }}>
-            Status
-          </span>
-          <span
-            className="text-xs px-2 py-1 rounded-full font-semibold"
-            style={{
-              background: status.bg,
-              color: status.color,
-              border: `1px solid ${status.color}30`,
-            }}
-          >
-            {status.label}
-          </span>
-        </div>
-        {connectionMode === "bluetooth" && bluetoothDeviceName && (
-          <p className="text-xs mb-3" style={{ color: "#A7B2C6" }}>
-            Device: {bluetoothDeviceName}
-          </p>
-        )}
-        <div className="flex gap-2">
-          {connectionMode !== "bluetooth" ? (
-            <button
-              type="button"
-              data-ocid="settings.bluetooth_connect_button"
-              onClick={onConnect}
-              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
-              style={{
-                background: "rgba(34,211,238,0.15)",
-                color: "#22D3EE",
-                border: "1px solid rgba(34,211,238,0.3)",
-              }}
-            >
-              📶 Pair HC-05/HM-10
-            </button>
-          ) : (
-            <button
-              type="button"
-              data-ocid="settings.bluetooth_disconnect_button"
-              onClick={onDisconnect}
-              className="flex-1 py-2 rounded-xl text-sm font-semibold transition-all hover:opacity-90"
-              style={{
-                background: "rgba(251,113,133,0.15)",
-                color: "#FB7185",
-                border: "1px solid rgba(251,113,133,0.3)",
-              }}
-            >
-              Disconnect
-            </button>
-          )}
-        </div>
-        <p className="text-[11px] mt-3" style={{ color: "#7F8AA3" }}>
-          Pair with HC-05 (classic BT) or HM-10 (BLE) module. Requires Web
-          Bluetooth supported browser (Chrome/Edge). AT commands use the UART
-          service UUID 0xFFE0.
-        </p>
+        <MachineRegister
+          connectionMode={connectionMode}
+          bluetoothDeviceName={bluetoothDeviceName}
+          onConnect={onConnect}
+          onDisconnect={onDisconnect}
+        />
       </motion.div>
 
       {/* Simulation Console */}
@@ -308,20 +235,25 @@ export function SettingsTab({
         </div>
       </motion.div>
 
-      {/* WAE Logo — footer branding */}
-      <div className="flex justify-center mt-6 pb-2">
-        <img
-          src="/assets/uploads/wae-logo_hd_white-019d234d-4858-7738-8435-dd85271554ee-1.png"
-          alt="WAE Logo"
-          style={{
-            maxWidth: 140,
-            height: "auto",
-            display: "block",
-            opacity: 0.45,
-            mixBlendMode: "screen",
-          }}
-        />
-      </div>
+      {/* Company Info Footer */}
+      <motion.div
+        className="pt-2 pb-4 text-center"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <div
+          className="border-t pt-4"
+          style={{ borderColor: "rgba(255,255,255,0.08)" }}
+        >
+          <p className="text-sm font-semibold" style={{ color: "#A7B2C6" }}>
+            WAE Limited
+          </p>
+          <p className="text-xs mt-1" style={{ color: "#7F8AA3" }}>
+            HQ- H18 Sector 63 NOIDA INDIA
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }

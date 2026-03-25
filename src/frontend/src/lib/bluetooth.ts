@@ -19,16 +19,38 @@
  * AT+DISPENSE      — trigger dispense
  * AT+STOP          — emergency stop
  * AT+LOCK=0        — disable hot water lock (redundant with app state)
+ *
+ * Sensor Notifications:
+ * The sensor characteristic (BLE_SENSOR_CHAR_UUID) streams JSON lines:
+ * {"tds":142,"ph":7.2,"temperature":{"hot":84.5,"cold":10.2,"ambient":25.1}}
+ * The app subscribes to characteristicvaluechanged and parses these.
  */
 
 export interface BluetoothConnection {
   characteristic: BluetoothRemoteGATTCharacteristic;
+  sensorCharacteristic: BluetoothRemoteGATTCharacteristic | null;
   device: BluetoothDevice;
 }
+
+export interface SensorTemperature {
+  hot?: number;
+  cold?: number;
+  ambient?: number;
+}
+
+export interface SensorData {
+  tds?: number;
+  ph?: number;
+  temperature?: SensorTemperature;
+}
+
+export type SensorCallback = (data: SensorData) => void;
 
 // HM-10 / HC-05 BLE service and characteristic UUIDs
 const BLE_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
 const BLE_CHAR_UUID = "0000ffe1-0000-1000-8000-00805f9b34fb";
+// Sensor notify characteristic — adjust UUID to match your hardware
+const BLE_SENSOR_CHAR_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb";
 
 /**
  * Request a Bluetooth device and return the writable characteristic.
@@ -39,7 +61,6 @@ export async function connectBluetooth(): Promise<BluetoothConnection> {
     throw new Error("Web Bluetooth API is not supported in this browser.");
   }
 
-  // Step 1: Request device — filter for HC-05 and HM-10 by name
   const device = await navigator.bluetooth.requestDevice({
     filters: [{ name: "HC-05" }, { name: "HM-10" }],
     optionalServices: [BLE_SERVICE_UUID],
@@ -49,16 +70,70 @@ export async function connectBluetooth(): Promise<BluetoothConnection> {
     throw new Error("Device does not support GATT.");
   }
 
-  // Step 2: Connect to GATT server
   const server = await device.gatt.connect();
-
-  // Step 3: Get the primary BLE UART service
   const service = await server.getPrimaryService(BLE_SERVICE_UUID);
-
-  // Step 4: Get the writable TX characteristic
   const characteristic = await service.getCharacteristic(BLE_CHAR_UUID);
 
-  return { characteristic, device };
+  // Try to get the sensor notify characteristic (may not exist on all hardware)
+  let sensorCharacteristic: BluetoothRemoteGATTCharacteristic | null = null;
+  try {
+    sensorCharacteristic =
+      await service.getCharacteristic(BLE_SENSOR_CHAR_UUID);
+  } catch {
+    // Sensor characteristic not available — sensor data will come via simulation
+  }
+
+  return { characteristic, sensorCharacteristic, device };
+}
+
+/**
+ * Subscribe to real-time sensor notifications from the BLE sensor characteristic.
+ * The sensor streams UTF-8 JSON lines:
+ * {"tds":142,"ph":7.2,"temperature":{"hot":84.5,"cold":10.2,"ambient":25.1}}
+ * Returns an unsubscribe function.
+ */
+export function subscribeSensorNotifications(
+  characteristic: BluetoothRemoteGATTCharacteristic,
+  onData: SensorCallback,
+): () => void {
+  const decoder = new TextDecoder();
+
+  const handler = (event: Event) => {
+    // Cast through unknown to avoid TS type overlap error on EventTarget
+    const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
+    if (!target.value) return;
+    try {
+      const text = decoder.decode(target.value);
+      // Support both JSON object and simple comma-separated "tds=142,ph=7.2"
+      if (text.trim().startsWith("{")) {
+        const parsed = JSON.parse(text.trim()) as SensorData;
+        onData(parsed);
+      } else {
+        // Fallback: parse key=value pairs
+        const result: SensorData = {};
+        for (const part of text.split(",")) {
+          const [key, val] = part.trim().split("=");
+          if (key === "tds" && val) result.tds = Number.parseFloat(val);
+          if (key === "ph" && val) result.ph = Number.parseFloat(val);
+        }
+        if (result.tds !== undefined || result.ph !== undefined) {
+          onData(result);
+        }
+      }
+    } catch {
+      // Ignore malformed sensor packets
+    }
+  };
+
+  characteristic.addEventListener("characteristicvaluechanged", handler);
+  characteristic.startNotifications().catch(() => {
+    // Notifications not supported — silently ignore
+  });
+
+  return () => {
+    characteristic.removeEventListener("characteristicvaluechanged", handler);
+    characteristic.stopNotifications().catch(() => {});
+  };
 }
 
 /**
