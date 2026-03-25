@@ -126,6 +126,9 @@ function TempSelector({
     {
       key: "hot",
       emoji: "🔥",
+      image: "/assets/uploads/hot-019d24c7-e025-7070-b013-9345c044a9e9-3.png" as
+        | string
+        | undefined,
       label: "Hot",
       color: "#FB7185",
       rgb: "251,113,133",
@@ -135,6 +138,10 @@ function TempSelector({
     {
       key: "cold",
       emoji: "❄️",
+      image:
+        "/assets/uploads/cold-019d24c7-dffe-717f-a196-f063216b7ab4-1.png" as
+          | string
+          | undefined,
       label: "Cold",
       color: "#22D3EE",
       rgb: "34,211,238",
@@ -143,7 +150,9 @@ function TempSelector({
     },
     {
       key: "ambient",
-      emoji: "🌿",
+      emoji: undefined as string | undefined,
+      image:
+        "/assets/uploads/ambient-019d24c7-e030-7114-afd6-d9c117af4edf-2.png",
       label: "Ambient",
       color: "#34D399",
       rgb: "52,211,153",
@@ -195,7 +204,15 @@ function TempSelector({
                 border: `1.5px solid rgba(${card.rgb},0.35)`,
               }}
             >
-              <span className="text-2xl mb-1">{card.emoji}</span>
+              {card.image ? (
+                <img
+                  src={card.image}
+                  alt={card.label}
+                  className="w-8 h-8 mb-1 object-contain"
+                />
+              ) : (
+                <span className="text-2xl mb-1">{card.emoji}</span>
+              )}
               <p
                 className="text-[11px] font-semibold mb-1"
                 style={{ color: "#A7B2C6" }}

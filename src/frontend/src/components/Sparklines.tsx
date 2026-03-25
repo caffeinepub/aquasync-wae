@@ -98,9 +98,16 @@ export function Sparklines({
         transition={{ delay: 0.15 }}
       >
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium" style={{ color: "#A7B2C6" }}>
-            TDS
-          </span>
+          <div className="flex items-center gap-1.5">
+            <img
+              src="/assets/uploads/tds-019d2474-9904-7692-8edb-016d4e67286c-3.png"
+              alt="TDS"
+              className="w-5 h-5 object-contain"
+            />
+            <span className="text-xs font-medium" style={{ color: "#A7B2C6" }}>
+              TDS
+            </span>
+          </div>
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
             style={{
@@ -137,9 +144,16 @@ export function Sparklines({
         transition={{ delay: 0.25 }}
       >
         <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium" style={{ color: "#A7B2C6" }}>
-            pH Level
-          </span>
+          <div className="flex items-center gap-1.5">
+            <img
+              src="/assets/uploads/ph-019d2474-9901-741f-86a4-9dda2f6cc661-2.png"
+              alt="pH"
+              className="w-5 h-5 object-contain"
+            />
+            <span className="text-xs font-medium" style={{ color: "#A7B2C6" }}>
+              pH Level
+            </span>
+          </div>
           <span
             className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
             style={{

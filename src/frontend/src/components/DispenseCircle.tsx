@@ -131,7 +131,7 @@ export function DispenseCircle({
                 : { color: "#A7B2C6", border: "1px solid transparent" }
             }
           >
-            <span>{m.icon}</span>
+            <span style={{ fontSize: "14.4px" }}>{m.icon}</span>
             <span>{m.label}</span>
           </button>
         ))}
