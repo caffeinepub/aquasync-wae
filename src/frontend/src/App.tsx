@@ -132,7 +132,7 @@ function TempSelector({
       label: "Hot",
       color: "#FB7185",
       rgb: "251,113,133",
-      defaultTemp: "~ 85°C",
+      defaultTemp: "85°C",
       liveTemp: `${hotTemp.toFixed(1)}°C`,
     },
     {
@@ -145,7 +145,7 @@ function TempSelector({
       label: "Cold",
       color: "#22D3EE",
       rgb: "34,211,238",
-      defaultTemp: "~ 10°C",
+      defaultTemp: "10°C",
       liveTemp: `${coldTemp.toFixed(1)}°C`,
     },
     {
@@ -156,7 +156,7 @@ function TempSelector({
       label: "Ambient",
       color: "#34D399",
       rgb: "52,211,153",
-      defaultTemp: "~ 25°C",
+      defaultTemp: "25°C",
       liveTemp: `${ambientTemp.toFixed(1)}°C`,
     },
   ];
