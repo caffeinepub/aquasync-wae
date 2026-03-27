@@ -45,6 +45,8 @@ interface MachineRegisterProps {
 
 type PairStep = "choose" | "bluetooth" | "qr" | "done";
 
+const DEFAULT_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb";
+
 export function MachineRegister({
   connectionMode,
   onConnect,
@@ -59,6 +61,10 @@ export function MachineRegister({
   const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
     null,
   );
+  const [btScanning, setBtScanning] = useState(false);
+
+  const webBluetoothSupported =
+    typeof navigator !== "undefined" && "bluetooth" in navigator;
 
   const {
     qrResults,
@@ -111,9 +117,45 @@ export function MachineRegister({
   }, [qrResults, step, stopScanning, registerMachine]);
 
   function handleBluetoothPair() {
-    const uuid = manualUUID.trim() || "0000ffe2-0000-1000-8000-00805f9b34fb";
+    const uuid = manualUUID.trim() || DEFAULT_UUID;
     onConnect();
     registerMachine(uuid, "bluetooth");
+  }
+
+  async function handleDeviceBluetoothScan() {
+    if (!webBluetoothSupported) {
+      toast.error("Web Bluetooth is not supported in this browser.");
+      return;
+    }
+    setBtScanning(true);
+    try {
+      // @ts-ignore — navigator.bluetooth is not in all TS lib defs
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [DEFAULT_UUID],
+      });
+      // Try to get a UUID from the device; fall back to default
+      let uuid = DEFAULT_UUID;
+      if (device.id) {
+        // device.id is a browser-internal opaque id, not a real UUID;
+        // prefer the service UUID we requested
+        uuid = DEFAULT_UUID;
+      }
+      onConnect();
+      registerMachine(uuid, "bluetooth");
+      toast.success(`Connected to "${device.name || "Unknown Device"}"`, {
+        icon: "📶",
+      });
+    } catch (err: any) {
+      if (err?.name === "NotFoundError" || err?.code === 8) {
+        // User cancelled
+        toast.info("Bluetooth scan cancelled.");
+      } else {
+        toast.error(err?.message || "Bluetooth scan failed.");
+      }
+    } finally {
+      setBtScanning(false);
+    }
   }
 
   function startQRScan() {
@@ -303,7 +345,7 @@ export function MachineRegister({
             className="space-y-3"
           >
             <div
-              className="rounded-2xl p-4 space-y-3"
+              className="rounded-2xl p-4 space-y-4"
               style={{
                 background: "rgba(129,140,248,0.07)",
                 border: "1px solid rgba(129,140,248,0.2)",
@@ -313,52 +355,136 @@ export function MachineRegister({
                 📶 Bluetooth Pairing
               </p>
 
-              {/* Manual UUID input */}
-              <div>
-                <p className="text-xs mb-1" style={{ color: "#A7B2C6" }}>
-                  Device Service UUID{" "}
-                  <span style={{ color: "#7F8AA3" }}>
-                    (optional — leave blank for default)
-                  </span>
+              {/* ── Option 1: Manual UUID ── */}
+              <div className="space-y-2">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Option 1 — Enter UUID Manually
                 </p>
-                <input
-                  className="w-full px-3 py-2 rounded-xl text-xs bg-transparent outline-none font-mono"
+                <div>
+                  <p className="text-xs mb-1" style={{ color: "#A7B2C6" }}>
+                    Device Service UUID{" "}
+                    <span style={{ color: "#7F8AA3" }}>
+                      (optional — leave blank for default)
+                    </span>
+                  </p>
+                  <input
+                    data-ocid="machine.uuid.input"
+                    className="w-full px-3 py-2 rounded-xl text-xs bg-transparent outline-none font-mono"
+                    style={{
+                      border: "1px solid rgba(129,140,248,0.3)",
+                      color: "white",
+                      background: "rgba(255,255,255,0.04)",
+                    }}
+                    value={manualUUID}
+                    onChange={(e) => setManualUUID(e.target.value)}
+                    placeholder="e.g. 0000ffe2-0000-1000-8000-00805f9b34fb"
+                  />
+                  <p className="text-[11px] mt-1" style={{ color: "#7F8AA3" }}>
+                    Default:{" "}
+                    <span style={{ color: "rgba(129,140,248,0.7)" }}>
+                      {DEFAULT_UUID}
+                    </span>
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  data-ocid="machine.primary_button"
+                  onClick={handleBluetoothPair}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-90"
                   style={{
-                    border: "1px solid rgba(129,140,248,0.3)",
-                    color: "white",
-                    background: "rgba(255,255,255,0.04)",
+                    background: "rgba(129,140,248,0.18)",
+                    color: "#818CF8",
+                    border: "1.5px solid rgba(129,140,248,0.4)",
                   }}
-                  value={manualUUID}
-                  onChange={(e) => setManualUUID(e.target.value)}
-                  placeholder="e.g. 0000ffe2-0000-1000-8000-00805f9b34fb"
-                />
-                <p className="text-[11px] mt-1" style={{ color: "#7F8AA3" }}>
-                  Default:{" "}
-                  <span style={{ color: "rgba(129,140,248,0.7)" }}>
-                    0000ffe2-0000-1000-8000-00805f9b34fb
-                  </span>
-                </p>
+                >
+                  Pair {machineName} via Bluetooth
+                </button>
               </div>
 
-              {/* Pair now */}
-              <button
-                type="button"
-                onClick={handleBluetoothPair}
-                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-90"
-                style={{
-                  background: "rgba(129,140,248,0.18)",
-                  color: "#818CF8",
-                  border: "1.5px solid rgba(129,140,248,0.4)",
-                }}
-              >
-                Pair {machineName} via Bluetooth
-              </button>
-              <p
-                className="text-[11px] text-center"
-                style={{ color: "#7F8AA3" }}
-              >
-                Requires Chrome or Edge with Web Bluetooth support
-              </p>
+              {/* ── Divider ── */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex-1 h-px"
+                  style={{ background: "rgba(129,140,248,0.2)" }}
+                />
+                <span
+                  className="text-xs font-semibold px-2"
+                  style={{ color: "rgba(129,140,248,0.6)" }}
+                >
+                  or
+                </span>
+                <div
+                  className="flex-1 h-px"
+                  style={{ background: "rgba(129,140,248,0.2)" }}
+                />
+              </div>
+
+              {/* ── Option 2: Device Bluetooth Prompt ── */}
+              <div className="space-y-2">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Option 2 — Device Bluetooth Selector
+                </p>
+                <p className="text-[11px]" style={{ color: "#7F8AA3" }}>
+                  Opens your device's Bluetooth selector. Requires Chrome or
+                  Edge.
+                </p>
+                <button
+                  type="button"
+                  data-ocid="machine.secondary_button"
+                  onClick={handleDeviceBluetoothScan}
+                  disabled={!webBluetoothSupported || btScanning}
+                  className="w-full py-2.5 rounded-xl text-sm font-bold transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  style={{
+                    background: webBluetoothSupported
+                      ? "rgba(129,140,248,0.12)"
+                      : "rgba(255,255,255,0.05)",
+                    color: webBluetoothSupported ? "#818CF8" : "#7F8AA3",
+                    border: `1.5px solid ${
+                      webBluetoothSupported
+                        ? "rgba(129,140,248,0.35)"
+                        : "rgba(255,255,255,0.1)"
+                    }`,
+                  }}
+                  title={
+                    !webBluetoothSupported
+                      ? "Web Bluetooth not supported in this browser. Use Chrome or Edge."
+                      : undefined
+                  }
+                >
+                  {btScanning ? (
+                    <>
+                      <span
+                        className="inline-block w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
+                        style={{
+                          borderColor: "#818CF8",
+                          borderTopColor: "transparent",
+                        }}
+                      />
+                      Scanning…
+                    </>
+                  ) : (
+                    <>
+                      <span>🔍</span>
+                      Scan via Device Bluetooth
+                    </>
+                  )}
+                </button>
+                {!webBluetoothSupported && (
+                  <p
+                    className="text-[11px] text-center"
+                    style={{ color: "#FB7185" }}
+                  >
+                    ⚠️ Web Bluetooth not available — use Chrome or Edge on
+                    Android/Desktop
+                  </p>
+                )}
+              </div>
             </div>
           </motion.div>
         )}
