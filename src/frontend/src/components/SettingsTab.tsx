@@ -235,12 +235,52 @@ export function SettingsTab({
         </div>
       </motion.div>
 
+      {/* Developer Documents Download */}
+      <motion.div
+        className="glass-card p-5"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
+        <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+          <img
+            src="/assets/uploads/download-019d24bc-d0b5-747b-b34d-cd89728ca9c9-6.png"
+            alt="Download"
+            className="w-5 h-5 object-contain"
+          />
+          Developer Documents
+        </h3>
+        <a
+          href="/assets/AquaSync_WAE_Hardware_Firmware_Brief.docx"
+          download="AquaSync_WAE_Hardware_Firmware_Brief.docx"
+          className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium w-full transition-all hover:opacity-90 active:scale-95"
+          style={{
+            background: "rgba(34,211,238,0.10)",
+            border: "1px solid rgba(34,211,238,0.25)",
+            color: "#22D3EE",
+            textDecoration: "none",
+          }}
+        >
+          <img
+            src="/assets/uploads/download-019d24bc-d0b5-747b-b34d-cd89728ca9c9-6.png"
+            alt=""
+            className="w-5 h-5 object-contain flex-shrink-0"
+          />
+          <div className="flex flex-col items-start">
+            <span className="font-semibold">Hardware &amp; Firmware Brief</span>
+            <span className="text-[11px] mt-0.5" style={{ color: "#7F8AA3" }}>
+              AquaSync_WAE_Hardware_Firmware_Brief.docx
+            </span>
+          </div>
+        </a>
+      </motion.div>
+
       {/* Company Info Footer */}
       <motion.div
         className="pt-2 pb-4 text-center"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.35 }}
       >
         <div
           className="border-t pt-4"
