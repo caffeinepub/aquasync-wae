@@ -420,44 +420,49 @@ export function MachineRegister({
               )}
             </div>
 
-            {/* Pair options */}
+            {/* Pair options — 3 columns */}
             <p className="text-xs font-medium" style={{ color: "#A7B2C6" }}>
               Choose pairing method:
             </p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-2">
+              {/* Bluetooth (manual UUID + BLE scan) */}
               <button
                 type="button"
+                data-ocid="machine.bluetooth.button"
                 onClick={() => setStep("bluetooth")}
-                className="flex flex-col items-center gap-2 py-5 rounded-2xl transition-all"
+                className="flex flex-col items-center gap-1.5 py-4 rounded-2xl transition-all hover:opacity-90"
                 style={{
                   background: "rgba(129,140,248,0.1)",
                   border: "1.5px solid rgba(129,140,248,0.3)",
                   color: "#818CF8",
                 }}
               >
-                <span className="text-2xl">📶</span>
-                <span className="text-xs font-bold">Bluetooth</span>
-                <span className="text-[10px] opacity-70">Pair via BLE</span>
+                <span className="text-xl">📶</span>
+                <span className="text-[11px] font-bold">Bluetooth</span>
+                <span className="text-[9px] opacity-70">UUID or BLE Scan</span>
               </button>
+
+              {/* QR Code */}
               <button
                 type="button"
+                data-ocid="machine.qr.button"
                 onClick={startQRScan}
-                className="flex flex-col items-center gap-2 py-5 rounded-2xl transition-all"
+                className="flex flex-col items-center gap-1.5 py-4 rounded-2xl transition-all hover:opacity-90"
                 style={{
                   background: "rgba(52,211,153,0.1)",
                   border: "1.5px solid rgba(52,211,153,0.3)",
                   color: "#34D399",
                 }}
               >
-                <span className="text-2xl">📷</span>
-                <span className="text-xs font-bold">QR Code</span>
-                <span className="text-[10px] opacity-70">Scan device QR</span>
+                <span className="text-xl">📷</span>
+                <span className="text-[11px] font-bold">QR Code</span>
+                <span className="text-[9px] opacity-70">Scan device QR</span>
               </button>
             </div>
           </motion.div>
         )}
 
-        {/* ── Bluetooth pairing ── */}
+        {/* ── Bluetooth pairing (manual UUID) ── */}
         {step === "bluetooth" && (
           <motion.div
             key="bluetooth"
@@ -567,7 +572,11 @@ export function MachineRegister({
                       ? "rgba(129,140,248,0.12)"
                       : "rgba(255,255,255,0.05)",
                     color: webBluetoothSupported ? "#818CF8" : "#7F8AA3",
-                    border: `1.5px solid ${webBluetoothSupported ? "rgba(129,140,248,0.35)" : "rgba(255,255,255,0.1)"}`,
+                    border: `1.5px solid ${
+                      webBluetoothSupported
+                        ? "rgba(129,140,248,0.35)"
+                        : "rgba(255,255,255,0.1)"
+                    }`,
                   }}
                 >
                   {btScanning ? (
