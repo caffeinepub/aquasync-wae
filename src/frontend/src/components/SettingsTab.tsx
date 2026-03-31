@@ -43,27 +43,12 @@ export function SettingsTab({
     <div className="space-y-4">
       <h2 className="text-lg font-bold text-white">Settings</h2>
 
-      {/* Purification Flow Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0 }}
-      >
-        <p
-          className="text-xs font-semibold mb-2 flex items-center gap-1.5"
-          style={{ color: "#A7B2C6" }}
-        >
-          <span>💧</span> Water Purification Flow
-        </p>
-        <PurificationFlow />
-      </motion.div>
-
-      {/* Auth Section */}
+      {/* 1. Auth Section */}
       <motion.div
         className="glass-card p-5"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
+        transition={{ delay: 0 }}
       >
         <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
           <span>🔐</span> Authentication
@@ -121,12 +106,12 @@ export function SettingsTab({
         </p>
       </motion.div>
 
-      {/* Machine Register Section — replaces Bluetooth Hardware */}
+      {/* 2. Machine Register Section */}
       <motion.div
         className="glass-card p-5"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
+        transition={{ delay: 0.05 }}
         data-ocid="settings.machine_register_panel"
       >
         <MachineRegister
@@ -143,7 +128,7 @@ export function SettingsTab({
           className="terminal-bg p-4"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.1 }}
           data-ocid="settings.sim_console_panel"
         >
           <div className="flex items-center justify-between mb-3">
@@ -196,12 +181,27 @@ export function SettingsTab({
         </motion.div>
       )}
 
-      {/* Keyword Command */}
+      {/* 3. Water Purification Flow Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
+        <p
+          className="text-xs font-semibold mb-2 flex items-center gap-1.5"
+          style={{ color: "#A7B2C6" }}
+        >
+          <span>💧</span> Water Purification Flow
+        </p>
+        <PurificationFlow />
+      </motion.div>
+
+      {/* 4. Keyword Command */}
       <motion.div
         className="glass-card p-5"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
+        transition={{ delay: 0.2 }}
       >
         <h3 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
           <span>⌨️</span> Text Command
@@ -240,7 +240,7 @@ export function SettingsTab({
         className="pt-2 pb-4 text-center"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.35 }}
+        transition={{ delay: 0.25 }}
       >
         <div
           className="border-t pt-4"

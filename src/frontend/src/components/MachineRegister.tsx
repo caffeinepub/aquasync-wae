@@ -43,9 +43,14 @@ interface MachineRegisterProps {
   onDisconnect: () => void;
 }
 
-type PairStep = "choose" | "bluetooth" | "qr" | "done";
+type PairStep = "choose" | "bluetooth" | "qr" | "bt-confirm" | "done";
 
 const DEFAULT_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb";
+
+interface DiscoveredDevice {
+  name: string;
+  uuids: string[];
+}
 
 export function MachineRegister({
   connectionMode,
@@ -62,6 +67,9 @@ export function MachineRegister({
     null,
   );
   const [btScanning, setBtScanning] = useState(false);
+  const [discoveredDevice, setDiscoveredDevice] =
+    useState<DiscoveredDevice | null>(null);
+  const [selectedUUID, setSelectedUUID] = useState("");
 
   const webBluetoothSupported =
     typeof navigator !== "undefined" && "bluetooth" in navigator;
@@ -103,6 +111,8 @@ export function MachineRegister({
       setStep("done");
       clearResults();
       setMachineName(randomMachineName());
+      setDiscoveredDevice(null);
+      setSelectedUUID("");
     },
     [machineName, clearResults],
   );
@@ -129,26 +139,43 @@ export function MachineRegister({
     }
     setBtScanning(true);
     try {
-      // @ts-ignore — navigator.bluetooth is not in all TS lib defs
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [DEFAULT_UUID],
       });
-      // Try to get a UUID from the device; fall back to default
-      let uuid = DEFAULT_UUID;
-      if (device.id) {
-        // device.id is a browser-internal opaque id, not a real UUID;
-        // prefer the service UUID we requested
-        uuid = DEFAULT_UUID;
+
+      const deviceName = device.name || "Unknown Device";
+      let uuids: string[] = [];
+
+      // Try to connect to GATT and discover services
+      if (device.gatt) {
+        try {
+          const server = await device.gatt.connect();
+          // @ts-ignore — getPrimaryServices() returns all services
+          const services = await server.getPrimaryServices();
+          uuids = services.map((s: any) => s.uuid as string);
+          device.gatt.disconnect();
+        } catch {
+          // GATT connection failed — fall back to DEFAULT_UUID
+          uuids = [];
+        }
       }
-      onConnect();
-      registerMachine(uuid, "bluetooth");
-      toast.success(`Connected to "${device.name || "Unknown Device"}"`, {
-        icon: "📶",
-      });
+
+      if (uuids.length === 0) {
+        uuids = [DEFAULT_UUID];
+      }
+
+      // Pre-fill machine name with BLE device name if it looks useful
+      if (device.name?.trim()) {
+        setMachineName(device.name.trim());
+        setNameInput(device.name.trim());
+      }
+
+      setDiscoveredDevice({ name: deviceName, uuids });
+      setSelectedUUID(uuids[0]);
+      setStep("bt-confirm");
     } catch (err: any) {
       if (err?.name === "NotFoundError" || err?.code === 8) {
-        // User cancelled
         toast.info("Bluetooth scan cancelled.");
       } else {
         toast.error(err?.message || "Bluetooth scan failed.");
@@ -169,6 +196,8 @@ export function MachineRegister({
     clearResults();
     setStep("choose");
     setManualUUID("");
+    setDiscoveredDevice(null);
+    setSelectedUUID("");
   }
 
   function removeMachine(id: string) {
@@ -485,6 +514,158 @@ export function MachineRegister({
                   </p>
                 )}
               </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── BT Confirm: show discovered device info ── */}
+        {step === "bt-confirm" && discoveredDevice && (
+          <motion.div
+            key="bt-confirm"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="space-y-3"
+          >
+            <div
+              className="rounded-2xl p-4 space-y-4"
+              style={{
+                background: "rgba(129,140,248,0.07)",
+                border: "1px solid rgba(129,140,248,0.25)",
+              }}
+            >
+              {/* Device found banner */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                  style={{ background: "rgba(129,140,248,0.15)" }}
+                >
+                  📶
+                </div>
+                <div>
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-widest"
+                    style={{ color: "rgba(129,140,248,0.7)" }}
+                  >
+                    Device Found
+                  </p>
+                  <p
+                    className="text-base font-bold leading-tight"
+                    style={{ color: "white" }}
+                  >
+                    {discoveredDevice.name}
+                  </p>
+                </div>
+              </div>
+
+              {/* Machine name (pre-filled, editable) */}
+              <div className="space-y-1">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Register as
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    data-ocid="machine.uuid.input"
+                    className="flex-1 px-3 py-1.5 rounded-xl text-sm bg-transparent outline-none"
+                    style={{
+                      border: "1px solid rgba(129,140,248,0.3)",
+                      color: "white",
+                      background: "rgba(255,255,255,0.04)",
+                    }}
+                    value={machineName}
+                    onChange={(e) => setMachineName(e.target.value)}
+                    placeholder="Machine name"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMachineName(randomMachineName())}
+                    className="px-3 py-1.5 rounded-xl text-xs"
+                    style={{
+                      background: "rgba(255,255,255,0.05)",
+                      color: "#7F8AA3",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                    }}
+                    title="Random name"
+                  >
+                    🔀
+                  </button>
+                </div>
+              </div>
+
+              {/* Service UUIDs */}
+              <div className="space-y-2">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Service UUID
+                  {discoveredDevice.uuids.length > 1 ? "s" : ""}{" "}
+                  <span className="font-normal" style={{ color: "#7F8AA3" }}>
+                    ({discoveredDevice.uuids.length} discovered — tap to select)
+                  </span>
+                </p>
+                <div className="space-y-1.5">
+                  {discoveredDevice.uuids.map((uuid) => (
+                    <button
+                      key={uuid}
+                      type="button"
+                      onClick={() => setSelectedUUID(uuid)}
+                      className="w-full text-left px-3 py-2.5 rounded-xl font-mono text-xs transition-all"
+                      style={{
+                        background:
+                          selectedUUID === uuid
+                            ? "rgba(129,140,248,0.2)"
+                            : "rgba(255,255,255,0.04)",
+                        border:
+                          selectedUUID === uuid
+                            ? "1.5px solid rgba(129,140,248,0.5)"
+                            : "1px solid rgba(255,255,255,0.08)",
+                        color: selectedUUID === uuid ? "#818CF8" : "#A7B2C6",
+                      }}
+                    >
+                      <span className="mr-2">
+                        {selectedUUID === uuid ? "✔" : "○"}
+                      </span>
+                      {uuid}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Confirm register */}
+              <button
+                type="button"
+                data-ocid="machine.primary_button"
+                onClick={() => {
+                  onConnect();
+                  registerMachine(selectedUUID || DEFAULT_UUID, "bluetooth");
+                }}
+                className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
+                style={{
+                  background: "rgba(129,140,248,0.2)",
+                  color: "#818CF8",
+                  border: "1.5px solid rgba(129,140,248,0.45)",
+                }}
+              >
+                ✅ Register This Device
+              </button>
+
+              {/* Cancel back to bluetooth step */}
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("bluetooth");
+                  setDiscoveredDevice(null);
+                  setSelectedUUID("");
+                }}
+                className="w-full py-2 rounded-xl text-xs transition-all hover:opacity-80"
+                style={{ color: "#7F8AA3" }}
+              >
+                ← Back to pairing options
+              </button>
             </div>
           </motion.div>
         )}
