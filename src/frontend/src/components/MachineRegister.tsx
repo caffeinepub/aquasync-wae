@@ -19,6 +19,8 @@ const MACHINE_NAMES = [
   "PureFlow",
 ];
 
+const BAUD_RATES = [9600, 19200, 38400, 57600, 115200, 230400];
+
 function randomMachineName(): string {
   return MACHINE_NAMES[Math.floor(Math.random() * MACHINE_NAMES.length)];
 }
@@ -34,6 +36,16 @@ export interface RegisteredMachine {
   serial: string;
   pairedAt: number;
   method: "bluetooth" | "qr";
+  moduleName?: string;
+  baudRate?: number;
+  wifiSSID?: string;
+}
+
+interface DeviceConfig {
+  moduleName: string;
+  baudRate: number;
+  wifiSSID: string;
+  wifiPassword: string;
 }
 
 interface MachineRegisterProps {
@@ -43,13 +55,21 @@ interface MachineRegisterProps {
   onDisconnect: () => void;
 }
 
-type PairStep = "choose" | "bluetooth" | "qr" | "bt-confirm" | "done";
+type PairStep =
+  | "choose"
+  | "bluetooth"
+  | "qr"
+  | "bt-confirm"
+  | "configure"
+  | "done";
 
 const DEFAULT_UUID = "0000ffe2-0000-1000-8000-00805f9b34fb";
+const CONFIG_CHARACTERISTIC_UUID = "0000ffe4-0000-1000-8000-00805f9b34fb";
 
 interface DiscoveredDevice {
   name: string;
   uuids: string[];
+  gattServer?: BluetoothRemoteGATTServer;
 }
 
 export function MachineRegister({
@@ -70,6 +90,15 @@ export function MachineRegister({
   const [discoveredDevice, setDiscoveredDevice] =
     useState<DiscoveredDevice | null>(null);
   const [selectedUUID, setSelectedUUID] = useState("");
+  const [pendingMachineUUID, setPendingMachineUUID] = useState("");
+  const [showWifiPassword, setShowWifiPassword] = useState(false);
+  const [sendingConfig, setSendingConfig] = useState(false);
+  const [deviceConfig, setDeviceConfig] = useState<DeviceConfig>({
+    moduleName: "",
+    baudRate: 115200,
+    wifiSSID: "",
+    wifiPassword: "",
+  });
 
   const webBluetoothSupported =
     typeof navigator !== "undefined" && "bluetooth" in navigator;
@@ -91,8 +120,8 @@ export function MachineRegister({
     maxResults: 3,
   });
 
-  const registerMachine = useCallback(
-    (uuid: string, method: "bluetooth" | "qr") => {
+  const finalizeRegistration = useCallback(
+    (uuid: string, method: "bluetooth" | "qr", config?: DeviceConfig) => {
       if (!uuid) {
         toast.error("UUID cannot be empty");
         return;
@@ -104,6 +133,9 @@ export function MachineRegister({
         serial: randomSerial(),
         pairedAt: Date.now(),
         method,
+        moduleName: config?.moduleName || undefined,
+        baudRate: config?.baudRate || undefined,
+        wifiSSID: config?.wifiSSID || undefined,
       };
       setMachines((prev) => [newMachine, ...prev]);
       setSelectedMachineId(newMachine.id);
@@ -113,23 +145,32 @@ export function MachineRegister({
       setMachineName(randomMachineName());
       setDiscoveredDevice(null);
       setSelectedUUID("");
+      setPendingMachineUUID("");
+      setDeviceConfig({
+        moduleName: "",
+        baudRate: 115200,
+        wifiSSID: "",
+        wifiPassword: "",
+      });
     },
     [machineName, clearResults],
   );
 
-  // Handle QR scan result — treat scanned data as UUID
+  // Handle QR scan result
   useEffect(() => {
     if (step === "qr" && qrResults.length > 0) {
       const scanned = qrResults[0].data.trim();
       stopScanning();
-      registerMachine(scanned, "qr");
+      finalizeRegistration(scanned, "qr");
     }
-  }, [qrResults, step, stopScanning, registerMachine]);
+  }, [qrResults, step, stopScanning, finalizeRegistration]);
 
   function handleBluetoothPair() {
     const uuid = manualUUID.trim() || DEFAULT_UUID;
     onConnect();
-    registerMachine(uuid, "bluetooth");
+    setPendingMachineUUID(uuid);
+    setDeviceConfig((prev) => ({ ...prev, moduleName: machineName }));
+    setStep("configure");
   }
 
   async function handleDeviceBluetoothScan() {
@@ -146,17 +187,15 @@ export function MachineRegister({
 
       const deviceName = device.name || "Unknown Device";
       let uuids: string[] = [];
+      let gattServer: BluetoothRemoteGATTServer | undefined;
 
-      // Try to connect to GATT and discover services
       if (device.gatt) {
         try {
-          const server = await device.gatt.connect();
-          // @ts-ignore — getPrimaryServices() returns all services
-          const services = await server.getPrimaryServices();
+          gattServer = await device.gatt.connect();
+          // @ts-ignore
+          const services = await gattServer.getPrimaryServices();
           uuids = services.map((s: any) => s.uuid as string);
-          device.gatt.disconnect();
         } catch {
-          // GATT connection failed — fall back to DEFAULT_UUID
           uuids = [];
         }
       }
@@ -165,13 +204,12 @@ export function MachineRegister({
         uuids = [DEFAULT_UUID];
       }
 
-      // Pre-fill machine name with BLE device name if it looks useful
       if (device.name?.trim()) {
         setMachineName(device.name.trim());
         setNameInput(device.name.trim());
       }
 
-      setDiscoveredDevice({ name: deviceName, uuids });
+      setDiscoveredDevice({ name: deviceName, uuids, gattServer });
       setSelectedUUID(uuids[0]);
       setStep("bt-confirm");
     } catch (err: any) {
@@ -182,6 +220,60 @@ export function MachineRegister({
       }
     } finally {
       setBtScanning(false);
+    }
+  }
+
+  function handleConfirmDevice() {
+    onConnect();
+    const uuid = selectedUUID || DEFAULT_UUID;
+    setPendingMachineUUID(uuid);
+    setDeviceConfig((prev) => ({
+      ...prev,
+      moduleName: discoveredDevice?.name || machineName,
+    }));
+    setStep("configure");
+  }
+
+  async function handleSendConfig() {
+    setSendingConfig(true);
+    try {
+      const payload = JSON.stringify({
+        command: "configure",
+        module_name: deviceConfig.moduleName,
+        baud_rate: deviceConfig.baudRate,
+        wifi_ssid: deviceConfig.wifiSSID,
+        wifi_password: deviceConfig.wifiPassword,
+      });
+
+      // Try to send via BLE if gattServer is still connected
+      if (discoveredDevice?.gattServer?.connected) {
+        try {
+          const service = await discoveredDevice.gattServer.getPrimaryService(
+            pendingMachineUUID || DEFAULT_UUID,
+          );
+          const characteristic = await service.getCharacteristic(
+            CONFIG_CHARACTERISTIC_UUID,
+          );
+          const encoder = new TextEncoder();
+          await characteristic.writeValue(encoder.encode(payload));
+          toast.success("Configuration sent to device!", { icon: "✅" });
+        } catch {
+          // BLE write failed — still register with config stored locally
+          toast.info("Config saved locally (BLE write unavailable)", {
+            icon: "💾",
+          });
+        }
+      } else {
+        toast.info("Config saved locally", { icon: "💾" });
+      }
+
+      finalizeRegistration(
+        pendingMachineUUID || DEFAULT_UUID,
+        "bluetooth",
+        deviceConfig,
+      );
+    } finally {
+      setSendingConfig(false);
     }
   }
 
@@ -198,6 +290,7 @@ export function MachineRegister({
     setManualUUID("");
     setDiscoveredDevice(null);
     setSelectedUUID("");
+    setPendingMachineUUID("");
   }
 
   function removeMachine(id: string) {
@@ -384,7 +477,7 @@ export function MachineRegister({
                 📶 Bluetooth Pairing
               </p>
 
-              {/* ── Option 1: Manual UUID ── */}
+              {/* Option 1: Manual UUID */}
               <div className="space-y-2">
                 <p
                   className="text-xs font-semibold"
@@ -433,7 +526,7 @@ export function MachineRegister({
                 </button>
               </div>
 
-              {/* ── Divider ── */}
+              {/* Divider */}
               <div className="flex items-center gap-3">
                 <div
                   className="flex-1 h-px"
@@ -451,13 +544,13 @@ export function MachineRegister({
                 />
               </div>
 
-              {/* ── Option 2: Device Bluetooth Prompt ── */}
+              {/* Option 2: Device BT Prompt */}
               <div className="space-y-2">
                 <p
                   className="text-xs font-semibold"
                   style={{ color: "#A7B2C6" }}
                 >
-                  Option 2 — Device Bluetooth Selector
+                  Option 2 — Scan via Device Bluetooth
                 </p>
                 <p className="text-[11px]" style={{ color: "#7F8AA3" }}>
                   Opens your device's Bluetooth selector. Requires Chrome or
@@ -474,17 +567,8 @@ export function MachineRegister({
                       ? "rgba(129,140,248,0.12)"
                       : "rgba(255,255,255,0.05)",
                     color: webBluetoothSupported ? "#818CF8" : "#7F8AA3",
-                    border: `1.5px solid ${
-                      webBluetoothSupported
-                        ? "rgba(129,140,248,0.35)"
-                        : "rgba(255,255,255,0.1)"
-                    }`,
+                    border: `1.5px solid ${webBluetoothSupported ? "rgba(129,140,248,0.35)" : "rgba(255,255,255,0.1)"}`,
                   }}
-                  title={
-                    !webBluetoothSupported
-                      ? "Web Bluetooth not supported in this browser. Use Chrome or Edge."
-                      : undefined
-                  }
                 >
                   {btScanning ? (
                     <>
@@ -558,7 +642,7 @@ export function MachineRegister({
                 </div>
               </div>
 
-              {/* Machine name (pre-filled, editable) */}
+              {/* Machine name */}
               <div className="space-y-1">
                 <p
                   className="text-xs font-semibold"
@@ -568,7 +652,6 @@ export function MachineRegister({
                 </p>
                 <div className="flex gap-2">
                   <input
-                    data-ocid="machine.uuid.input"
                     className="flex-1 px-3 py-1.5 rounded-xl text-sm bg-transparent outline-none"
                     style={{
                       border: "1px solid rgba(129,140,248,0.3)",
@@ -601,8 +684,7 @@ export function MachineRegister({
                   className="text-xs font-semibold"
                   style={{ color: "#A7B2C6" }}
                 >
-                  Service UUID
-                  {discoveredDevice.uuids.length > 1 ? "s" : ""}{" "}
+                  Service UUID{discoveredDevice.uuids.length > 1 ? "s" : ""}{" "}
                   <span className="font-normal" style={{ color: "#7F8AA3" }}>
                     ({discoveredDevice.uuids.length} discovered — tap to select)
                   </span>
@@ -635,14 +717,11 @@ export function MachineRegister({
                 </div>
               </div>
 
-              {/* Confirm register */}
+              {/* Next: Configure Device */}
               <button
                 type="button"
                 data-ocid="machine.primary_button"
-                onClick={() => {
-                  onConnect();
-                  registerMachine(selectedUUID || DEFAULT_UUID, "bluetooth");
-                }}
+                onClick={handleConfirmDevice}
                 className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
                 style={{
                   background: "rgba(129,140,248,0.2)",
@@ -650,10 +729,9 @@ export function MachineRegister({
                   border: "1.5px solid rgba(129,140,248,0.45)",
                 }}
               >
-                ✅ Register This Device
+                Next — Configure Device ›
               </button>
 
-              {/* Cancel back to bluetooth step */}
               <button
                 type="button"
                 onClick={() => {
@@ -665,6 +743,247 @@ export function MachineRegister({
                 style={{ color: "#7F8AA3" }}
               >
                 ← Back to pairing options
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* ── Configure Device ── */}
+        {step === "configure" && (
+          <motion.div
+            key="configure"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="space-y-3"
+          >
+            <div
+              className="rounded-2xl p-4 space-y-4"
+              style={{
+                background: "rgba(34,211,238,0.06)",
+                border: "1px solid rgba(34,211,238,0.2)",
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
+                  style={{ background: "rgba(34,211,238,0.12)" }}
+                >
+                  ⚙️
+                </div>
+                <div>
+                  <p
+                    className="text-[11px] font-semibold uppercase tracking-widest"
+                    style={{ color: "rgba(34,211,238,0.7)" }}
+                  >
+                    Device Configuration
+                  </p>
+                  <p className="text-sm font-bold" style={{ color: "white" }}>
+                    Send settings via Bluetooth
+                  </p>
+                </div>
+              </div>
+
+              {/* BLE Module Name */}
+              <div className="space-y-1.5">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Bluetooth Module Name
+                </p>
+                <input
+                  id="cfg-module-name"
+                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+                  style={{
+                    border: "1px solid rgba(34,211,238,0.3)",
+                    color: "white",
+                    background: "rgba(255,255,255,0.04)",
+                  }}
+                  value={deviceConfig.moduleName}
+                  onChange={(e) =>
+                    setDeviceConfig((prev) => ({
+                      ...prev,
+                      moduleName: e.target.value,
+                    }))
+                  }
+                  placeholder="e.g. WAE-AquaSync"
+                />
+                <p className="text-[11px]" style={{ color: "#7F8AA3" }}>
+                  Name that will appear in Bluetooth device list
+                </p>
+              </div>
+
+              {/* Baud Rate */}
+              <div className="space-y-1.5">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Baud Rate
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  {BAUD_RATES.map((rate) => (
+                    <button
+                      key={rate}
+                      type="button"
+                      onClick={() =>
+                        setDeviceConfig((prev) => ({ ...prev, baudRate: rate }))
+                      }
+                      className="py-2 rounded-xl text-xs font-bold transition-all"
+                      style={{
+                        background:
+                          deviceConfig.baudRate === rate
+                            ? "rgba(34,211,238,0.2)"
+                            : "rgba(255,255,255,0.04)",
+                        border:
+                          deviceConfig.baudRate === rate
+                            ? "1.5px solid rgba(34,211,238,0.5)"
+                            : "1px solid rgba(255,255,255,0.08)",
+                        color:
+                          deviceConfig.baudRate === rate
+                            ? "#22D3EE"
+                            : "#A7B2C6",
+                      }}
+                    >
+                      {rate.toLocaleString()}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px]" style={{ color: "#7F8AA3" }}>
+                  Serial communication baud rate (default: 115200)
+                </p>
+              </div>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3">
+                <div
+                  className="flex-1 h-px"
+                  style={{ background: "rgba(34,211,238,0.15)" }}
+                />
+                <span
+                  className="text-[10px] font-semibold px-2 uppercase tracking-wider"
+                  style={{ color: "rgba(34,211,238,0.5)" }}
+                >
+                  Wi-Fi
+                </span>
+                <div
+                  className="flex-1 h-px"
+                  style={{ background: "rgba(34,211,238,0.15)" }}
+                />
+              </div>
+
+              {/* WiFi SSID */}
+              <div className="space-y-1.5">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Wi-Fi SSID
+                </p>
+                <input
+                  className="w-full px-3 py-2.5 rounded-xl text-sm bg-transparent outline-none"
+                  style={{
+                    border: "1px solid rgba(34,211,238,0.3)",
+                    color: "white",
+                    background: "rgba(255,255,255,0.04)",
+                  }}
+                  value={deviceConfig.wifiSSID}
+                  onChange={(e) =>
+                    setDeviceConfig((prev) => ({
+                      ...prev,
+                      wifiSSID: e.target.value,
+                    }))
+                  }
+                  placeholder="Your network name"
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* WiFi Password */}
+              <div className="space-y-1.5">
+                <p
+                  className="text-xs font-semibold"
+                  style={{ color: "#A7B2C6" }}
+                >
+                  Wi-Fi Password
+                </p>
+                <div className="relative">
+                  <input
+                    className="w-full px-3 py-2.5 pr-10 rounded-xl text-sm bg-transparent outline-none"
+                    style={{
+                      border: "1px solid rgba(34,211,238,0.3)",
+                      color: "white",
+                      background: "rgba(255,255,255,0.04)",
+                    }}
+                    type={showWifiPassword ? "text" : "password"}
+                    value={deviceConfig.wifiPassword}
+                    onChange={(e) =>
+                      setDeviceConfig((prev) => ({
+                        ...prev,
+                        wifiPassword: e.target.value,
+                      }))
+                    }
+                    placeholder="Wi-Fi password"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowWifiPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-sm"
+                    style={{ color: "#7F8AA3" }}
+                    tabIndex={-1}
+                  >
+                    {showWifiPassword ? "🙈" : "👁"}
+                  </button>
+                </div>
+                <p className="text-[11px]" style={{ color: "#7F8AA3" }}>
+                  Sent securely over the Bluetooth connection
+                </p>
+              </div>
+
+              {/* Send Config Button */}
+              <button
+                type="button"
+                onClick={handleSendConfig}
+                disabled={sendingConfig}
+                className="w-full py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                style={{
+                  background: "rgba(34,211,238,0.18)",
+                  color: "#22D3EE",
+                  border: "1.5px solid rgba(34,211,238,0.45)",
+                }}
+              >
+                {sendingConfig ? (
+                  <>
+                    <span
+                      className="inline-block w-4 h-4 rounded-full border-2 border-t-transparent animate-spin"
+                      style={{
+                        borderColor: "#22D3EE",
+                        borderTopColor: "transparent",
+                      }}
+                    />
+                    Sending…
+                  </>
+                ) : (
+                  <>✅ Send Config &amp; Register</>
+                )}
+              </button>
+
+              {/* Skip config */}
+              <button
+                type="button"
+                onClick={() =>
+                  finalizeRegistration(
+                    pendingMachineUUID || DEFAULT_UUID,
+                    "bluetooth",
+                  )
+                }
+                className="w-full py-2 rounded-xl text-xs transition-all hover:opacity-80"
+                style={{ color: "#7F8AA3" }}
+              >
+                Skip configuration → Register only
               </button>
             </div>
           </motion.div>
@@ -683,7 +1002,6 @@ export function MachineRegister({
               className="rounded-2xl overflow-hidden"
               style={{ border: "1.5px solid rgba(52,211,153,0.3)" }}
             >
-              {/* Camera viewfinder */}
               <div className="relative" style={{ background: "#000" }}>
                 <video
                   ref={videoRef}
@@ -692,7 +1010,6 @@ export function MachineRegister({
                   muted
                 />
                 <canvas ref={canvasRef} style={{ display: "none" }} />
-                {/* Scan frame overlay */}
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div
                     className="w-36 h-36 rounded-xl"
@@ -784,6 +1101,18 @@ export function MachineRegister({
                     <p className="text-[11px]" style={{ color: "#7F8AA3" }}>
                       Serial: {m.serial}
                     </p>
+                    {m.moduleName && (
+                      <p
+                        className="text-[11px] mt-1"
+                        style={{ color: "#7F8AA3" }}
+                      >
+                        Module: {m.moduleName}
+                        {m.baudRate
+                          ? ` · ${m.baudRate.toLocaleString()} baud`
+                          : ""}
+                        {m.wifiSSID ? ` · Wi-Fi: ${m.wifiSSID}` : ""}
+                      </p>
+                    )}
                   </div>
                 );
               })()}
@@ -844,6 +1173,16 @@ export function MachineRegister({
                 >
                   {m.uuid}
                 </p>
+                {m.moduleName && (
+                  <p
+                    className="text-[10px]"
+                    style={{ color: "rgba(34,211,238,0.6)" }}
+                  >
+                    {m.moduleName}
+                    {m.baudRate ? ` · ${m.baudRate.toLocaleString()} baud` : ""}
+                    {m.wifiSSID ? ` · ${m.wifiSSID}` : ""}
+                  </p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 {connectionMode === "bluetooth" &&
@@ -874,7 +1213,6 @@ export function MachineRegister({
             </div>
           ))}
 
-          {/* Disconnect if connected */}
           {isConnected && (
             <button
               type="button"
