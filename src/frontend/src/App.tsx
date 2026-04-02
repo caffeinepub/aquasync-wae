@@ -549,17 +549,7 @@ export default function App() {
         className="relative z-10 text-center pb-6"
         style={{ color: "#7F8AA3" }}
       >
-        <p className="text-[11px]">
-          © {new Date().getFullYear()}. Built with ❤️ using{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(typeof window !== "undefined" ? window.location.hostname : "")}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline hover:text-white transition-colors"
-          >
-            caffeine.ai
-          </a>
-        </p>
+        <p className="text-[11px]">© {new Date().getFullYear()}. By Janmejay</p>
       </footer>
 
       <Toaster
